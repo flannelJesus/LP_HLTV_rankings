@@ -1,0 +1,16 @@
+{
+  "name": "lp_hltv_rankings",
+  "version": "1.0.0",
+  "description": "scrape hltv for rankings, format them for liquipedia",
+  "main": "bin/index.js",
+  "scripts": {
+    "test": ""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^0.22.0",
+    "request": "^2.75.0",
+    "request-promise": "^4.1.1"
+  }
+}
