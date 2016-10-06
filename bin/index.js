@@ -1,44 +1,65 @@
 "use strict";
 
-let get = require('request-promise');
-let cheerio = require('cheerio');
+let get_rankings = require('./get-rankings'),
+    get_ranking_dates = require('./get-ranking-dates'),
+    fs = require('fs'),
+    path = require('path');
 
-/**
- *
- * @param {string} str
- */
-function stringToInt(str) {
-    return parseInt(str.replace(/[^0-9\.]/g, ''), 10);
+let start_date = new Date(2015, 9, 1); // October 1 2015
+let end_date = new Date(2017, 1, 1);
+let cur_date = new Date(start_date);
+let dates_to_get = [];
+
+while (cur_date < end_date) {
+    dates_to_get.push(new Date(cur_date));
+    cur_date.setMonth(cur_date.getMonth() + 1);
 }
 
-get('http://www.hltv.org/ranking/teams/')
-    .then(function (html) {
-        let $ = cheerio.load(html);
+/**
+ * @param {Date} date
+ */
+function convertDateToLink(date) {
+    let monthName = date.toLocaleDateString('en-gb', {month: 'long'});
+    let year = date.getFullYear();
+    let date_num = date.getDate();
+    return `http://www.hltv.org/ranking/teams/${year}/${monthName}/${date_num}/`;
+}
 
-        let date = $('.centerFade h1').text().split('- ')[1];
-        let teams = [];
+var allDatePromises = [];
 
-        let teamBoxes = $('.framedBox.ranking-box');
-        teamBoxes.each(function () {
-            let team = {};
-            team.name = $(this).find('.ranking-teamName > a').text();
-            team.rank = stringToInt($(this).find('.ranking-number').text());
-            team.points = stringToInt($(this).find('.ranking-teamName > span').text());
-             team.rank_change = (function () {
-                let score = $(this).find('.ranking-delta').text();
-                if (score === '-') return 0;
-                if (score.indexOf('+') > -1) return stringToInt(score);
-                if (score.indexOf('-') > -1) return -stringToInt(score);
-            }).call(this);
+console.log('getting dates');
+dates_to_get.map(convertDateToLink).forEach(function(url) {
+    allDatePromises.push(get_ranking_dates(url));
+});
 
-            team.players = (function(el){
-                let players = [];
-                el.each(function(){
-                    players.push($(this).text().replace(/ /g,''));
-                });
-                return players;
-            })($(this).find('.ranking-playerNick'));
+Promise.all(allDatePromises)
+    .then(function(results) {
+        console.log('done getting dates');
+        return results.reduce(function(a, b) {
+            return a.concat(b)
+        });
+    })
+    .then(function(ranking_urls) {
+        var get_promises = [];
 
-            teams.push(team);
-        })
+        ranking_urls.map(function(suffix) {
+            return `http://www.hltv.org${suffix}`
+        }).forEach(function(url, index) {
+            let get = get_rankings(url);
+            get_promises.push(get);
+            get.then(function() {
+                console.log(`got ${index} of ${ranking_urls.length}`)
+            }).catch(function() {
+                console.log(`missed ${index}, ${url}`);
+            })
+        });
+
+        return Promise.all(get_promises);
+    })
+    .then(function(results) {
+        console.log('done');
+        fs.writeFileSync(path.join(__dirname, './output.json'), JSON.stringify(results));
+    })
+    .catch(function(err) {
+        console.log(err);
     });
